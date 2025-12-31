@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Countdown Tahun Baru 2026</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+            background: linear-gradient(to bottom, #000428 0%, #001a3d 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 200px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 40px rgba(255, 255, 255, 0.8);
+            z-index: 10;
+            animation: pulse 1s ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .greeting {
+            position: fixed;
+            z-index: 10;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        .word {
+            position: absolute;
+            font-size: 80px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.9);
+            letter-spacing: 5px;
+            opacity: 0;
+            transition: all 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            transform: translate(-50%, -50%) scale(0.7);
+            white-space: nowrap;
+        }
+
+        .word.show {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .word.centered {
+            transition: all 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .word.final {
+            transform: translate(0, -12px) scale(1.06);
+            text-shadow: 0 0 40px rgba(255,255,255,0.95);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        @media (max-width: 768px) {
+            .countdown {
+                font-size: 120px;
+            }
+            .word {
+                font-size: 40px;
+                letter-spacing: 3px;
+            }
+        }
+
+        /* CSS-in-JS alternatif: tambahkan style minimal untuk tombol */
+        .fire-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: linear-gradient(135deg,#ff7a18,#af002d);
+            color: white;
+            border: none;
+            padding: 12px 16px;
+            font-weight: bold;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+            cursor: pointer;
+            z-index: 20;
+        }
+        .fire-btn:active { transform: translateY(1px); }
+        @media (max-width:768px) {
+            .fire-btn { right: 12px; bottom: 12px; padding: 10px 12px; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="countdown hidden" id="countdown"></div>
+    <div class="greeting" id="greeting"></div>
+
+    <!-- tombol tunggal untuk memicu kombinasi (klik => next combo) -->
+    <button id="btnCombo" class="fire-btn" aria-label="Play Combo">Play Combo</button>
+ 
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Tambahkan palet warna tetap untuk percikan (hindari "rainbow" penuh)
+        const SPARK_COLOR_PALETTE = ['#ff4d4f', '#ff7a18', '#ffd666', '#69c0ff', '#b37feb', '#ffa500'];
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // Bintang
+        class Star {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.speed = Math.random() * 0.5 + 0.1;
+                this.opacity = Math.random();
+                this.increasing = Math.random() > 0.5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                if (this.increasing) {
+                    this.opacity += 0.01;
+                    if (this.opacity >= 1) this.increasing = false;
+                } else {
+                    this.opacity -= 0.01;
+                    if (this.opacity <= 0.2) this.increasing = true;
+                }
+                this.draw();
+            }
+        }
+
+        // Partikel Kembang Api (ditingkatkan: tipe 'spark' & 'smoke' + glow)
+        class Particle {
+            constructor(x, y, color, angle, options = {}) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = (options.size || (Math.random() * 3 + 1));
+                this.speed = (options.speed || (Math.random() * 4 + 2));
+                this.speedX = Math.cos(angle) * this.speed;
+                this.speedY = Math.sin(angle) * this.speed;
+                this.gravity = options.gravity ?? 0.05;
+                this.alpha = 1;
+                this.decay = options.decay || (Math.random() * 0.01 + 0.004);
+                this.trail = [];
+                this.friction = options.friction ?? 0.985;
+                this.type = options.type || 'spark'; // 'spark' or 'smoke'
+                this.rotation = Math.random() * Math.PI * 2;
+                this.spin = (Math.random() - 0.5) * 0.2;
+                this.wind = (Math.random() - 0.5) * 0.03;
+            }
+
+            draw() {
+                ctx.save();
+
+                // glow for sparks using additive blending (kurangi intensitas)
+                if (this.type === 'spark') {
+                    ctx.globalCompositeOperation = 'lighter';
+                    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 6);
+                    grad.addColorStop(0, this.color);
+                    grad.addColorStop(0.12, this.color);
+                    // hilangkan stop putih agar tidak menimbulkan kilau murni
+                    grad.addColorStop(0.45, 'rgba(0,0,0,0)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                    ctx.fillStyle = grad;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // slightly softer core glow
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.color;
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+
+				// ember: kecil, hangat, jatuh ke bawah (soft glow, tanpa putih)
+				if (this.type === 'ember') {
+					// soft radial ember glow using its color
+					ctx.globalCompositeOperation = 'lighter';
+					const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 5);
+					g.addColorStop(0, this.color);
+					g.addColorStop(0.5, 'rgba(0,0,0,0)');
+					ctx.fillStyle = g;
+					ctx.beginPath();
+					ctx.arc(this.x, this.y, this.size * 5, 0, Math.PI * 2);
+					ctx.fill();
+					ctx.globalCompositeOperation = 'source-over';
+				}
+
+                // Draw trail (smokey)
+                for (let i = 0; i < this.trail.length; i++) {
+                    const t = this.trail[i];
+                    const trailAlpha = (this.alpha * (i / this.trail.length)) * (this.type === 'smoke' ? 0.35 : 0.15);
+                    ctx.globalAlpha = trailAlpha;
+                    const smokeSize = this.size * (1 + (this.trail.length - i) * 0.25);
+                    if (this.type === 'smoke') {
+                        ctx.fillStyle = `rgba(200,200,200,${trailAlpha})`;
+                    } else {
+                        ctx.fillStyle = this.color;
+                    }
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, smokeSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Partikel utama
+                ctx.globalAlpha = this.alpha;
+                // small bright core
+                ctx.fillStyle = this.type === 'smoke' ? `rgba(180,180,180,${this.alpha})` : this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+
+                // clear shadow for next draws
+                ctx.shadowBlur = 0;
+                ctx.restore();
+            }
+
+            update() {
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > 12) this.trail.shift();
+
+                this.speedX *= this.friction;
+                this.speedY *= this.friction;
+                this.speedY += this.gravity;
+                this.x += this.speedX + this.wind;
+                this.y += this.speedY;
+                this.alpha -= this.decay;
+                this.rotation += this.spin;
+
+                this.draw();
+            }
+        }
+
+        // Confetti kecil yang jatuh saat final
+        class Confetti {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 6 + Math.random() * 8;
+                const colors = ['#ff4d4f', '#ffd666', '#73d13d', '#36cfc9', '#69c0ff', '#b37feb'];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.vx = (Math.random() - 0.5) * 3;
+                this.vy = 1 + Math.random() * 3;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.spin = (Math.random() - 0.5) * 0.2;
+                this.alpha = 1;
+                this.gravity = 0.06;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size * 0.6);
+                ctx.restore();
+            }
+
+            update() {
+                this.rotation += this.spin;
+                this.vy += this.gravity;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= 0.004;
+                this.draw();
+            }
+        }
+
+        // Roket
+        class Rocket {
+            constructor(startX, targetY, color = null, style = null) {
+                this.x = startX;
+                this.y = canvas.height;
+                this.targetY = targetY;
+                this.speed = 6;
+                this.exploded = false;
+                this.particles = [];
+                // gunakan palet terbatas sebagai default (hapus pemilihan HSL acak pelangi)
+                this.color = color || SPARK_COLOR_PALETTE[Math.floor(Math.random() * SPARK_COLOR_PALETTE.length)];
+                this.style = style;
+                this.trail = [];
+            }
+
+            draw() {
+                if (!this.exploded) {
+                    ctx.save();
+                    
+                    // Ekor roket
+                    for (let i = 0; i < this.trail.length; i++) {
+                        const t = this.trail[i];
+                        const alpha = i / this.trail.length;
+                        ctx.globalAlpha = alpha * 0.7;
+                        ctx.fillStyle = '#ffa500';
+                        ctx.beginPath();
+                        ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+
+                    // Roket
+                    ctx.globalAlpha = 1;
+                    ctx.fillStyle = this.color;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            // add shockwave class for big expanding ring
+            explode() {
+                this.exploded = true;
+
+                // kurangin intensitas flash awal
+                flashes.push({ x: this.x, y: this.y, alpha: 0.7 });
+
+                // shockwave ring
+                shockwaves.push(new Shockwave(this.x, this.y));
+
+                const baseColor = this.color;
+                const pattern = Math.random();
+                // lebih melebar: lebih banyak partikel dan spread lebih besar
+                const particleCount = 150 + Math.floor(Math.random() * 140);
+                const spread = 1.6;
+
+                // outer ring of sparks/smoke (lebih menyebar)
+                for (let i = 0; i < particleCount; i++) {
+                    const angle = (Math.PI * 2 * i) / particleCount + (Math.random() - 0.5) * 0.8 * spread;
+                    const speed = (pattern < 0.4) ? (3 + Math.random() * 7) : (2.5 + Math.random() * 9);
+                    // jangan gunakan putih murni; gunakan warna dasar roket
+                    const color = baseColor;
+                    const type = (Math.random() < 0.55) ? 'spark' : 'smoke';
+                    this.particles.push(new Particle(this.x, this.y, color, angle, {
+                        size: type === 'spark' ? (1 + Math.random() * 2.5) : (2.5 + Math.random() * 6),
+                        speed: speed * (1 + Math.random() * 0.6),
+                        decay: type === 'spark' ? (0.012 + Math.random() * 0.025) : (0.003 + Math.random() * 0.007),
+                        gravity: type === 'spark' ? 0.06 : 0.02,
+                        friction: type === 'spark' ? 0.985 : 0.95,
+                        type
+                    }));
+                }
+
+                // inner core mini- sparks (tetap)
+                for (let k = 0; k < 28; k++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    // hindari putih, gunakan baseColor agar tidak menyilaukan
+                    this.particles.push(new Particle(this.x, this.y, baseColor, angle, {
+                        size: 0.8 + Math.random() * 1.6,
+                        speed: 4 + Math.random() * 6,
+                        decay: 0.015 + Math.random() * 0.02,
+                        gravity: 0.05,
+                        friction: 0.98,
+                        type: 'spark'
+                    }));
+                }
+
+                // add several wide, slow smoke puffs to make explosion look broader
+                for (let s = 0; s < 12; s++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    this.particles.push(new Particle(this.x, this.y, baseColor, angle, {
+                        size: 6 + Math.random() * 8,
+                        speed: 1 + Math.random() * 3,
+                        decay: 0.004 + Math.random() * 0.008,
+                        gravity: 0.01,
+                        friction: 0.96,
+                        type: 'smoke'
+                    }));
+                }
+
+                // secondary delayed burst for more drama
+                setTimeout(() => {
+                    for (let j = 0; j < 32; j++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        // hindari putih murni
+                        const col = baseColor;
+                        this.particles.push(new Particle(this.x, this.y, col, angle, {
+                            size: 1 + Math.random() * 3,
+                            speed: 2 + Math.random() * 6,
+                            decay: 0.01 + Math.random() * 0.02,
+                            gravity: 0.02,
+                            friction: 0.97,
+                            type: Math.random() < 0.6 ? 'spark' : 'smoke'
+                        }));
+                    }
+                }, 120);
+
+                // spawn confetti and visual pop
+                spawnConfettiBurst(this.x, this.y, 8 + Math.floor(Math.random() * 30));
+
+				// spawn ember (percikan jatuh) yang warnanya mengikuti baseColor
+				// create embers that fall downward (small, warm, color = baseColor)
+				const emberCount = 30 + Math.floor(Math.random() * 30);
+				for (let e = 0; e < emberCount; e++) {
+					const angle = (Math.PI / 2) + (Math.random() - 0.5) * 0.8; // mostly downward
+					const speed = 0.6 + Math.random() * 2.2;
+					this.particles.push(new Particle(this.x, this.y, baseColor, angle, {
+						size: 0.8 + Math.random() * 2,
+						speed: speed,
+						decay: 0.006 + Math.random() * 0.012,
+						gravity: 0.12 + Math.random() * 0.06,
+						friction: 0.96,
+						type: 'ember'
+					}));
+				}
+            }
+
+            update() {
+                if (!this.exploded) {
+                    this.trail.push({ x: this.x, y: this.y });
+                    if (this.trail.length > 15) this.trail.shift();
+                    
+                    this.y -= this.speed;
+                    this.draw();
+
+                    if (this.y <= this.targetY) {
+                        this.explode();
+                    }
+                } else {
+                    this.particles.forEach((particle, index) => {
+                        particle.update();
+                        if (particle.alpha <= 0) {
+                            this.particles.splice(index, 1);
+                        }
+                    });
+                }
+            }
+        }
+
+        // add shockwave class for big expanding ring
+        class Shockwave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.max = 120 + Math.random() * 220;
+                this.alpha = 0.9;
+                this.lineWidth = 10 + Math.random() * 16;
+            }
+            update() {
+                this.radius += 10 + Math.random() * 6;
+                this.alpha -= 0.025;
+                this.lineWidth *= 0.975;
+                this.draw();
+            }
+            draw() {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.globalAlpha = Math.max(0, this.alpha);
+                ctx.strokeStyle = `rgba(255,220,160,${this.alpha})`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        const stars = [];
+        const rockets = [];
+        const flashes = [];
+        const confetti = [];
+        const shockwaves = []; // new
+
+        // Buat bintang
+        for (let i = 0; i < 150; i++) {
+            stars.push(new Star());
+        }
+
+        // helper: meluncurkan satu roket (dapat menerima color/style)
+        function launchRocket(x, targetY, color = null, style = null) {
+        	return new Rocket(x, targetY, color, style);
+        }
+        
+        // luncurkan dan tunggu sampai selesai (meledak + partikelnya habis)
+        function launchRocketAndWait(x, targetY, color = null, style = null) {
+            return new Promise((resolve) => {
+                const r = launchRocket(x, targetY, color, style);
+                rockets.push(r);
+                const check = setInterval(() => {
+                    if (r.exploded && r.particles.length === 0) {
+                        clearInterval(check);
+                        resolve();
+                    }
+                }, 120);
+            });
+        }
+        
+        // Kombinasi preset
+        const combos = {
+			'multiring': async (cx = canvas.width/2) => {
+				// three staggered heights to create rings
+				for (let i = 0; i < 3; i++) {
+					const targetY = (canvas.height * 0.2) + i * 60 + Math.random() * 50;
+					await launchRocketAndWait(cx + (Math.random()-0.5)*80, targetY);
+					await new Promise(r => setTimeout(r, 220));
+				}
+			},
+			'willow': async (cx = canvas.width/2) => {
+				// willowy slow-smoke style several rockets
+				for (let i = 0; i < 5; i++) {
+					const x = cx + (Math.random() - 0.5) * 260;
+					const targetY = Math.random() * (canvas.height * 0.45) + 80;
+					await launchRocketAndWait(x, targetY, null, 'willow');
+					await new Promise(r => setTimeout(r, 180));
+				}
+			},
+			'finale': async (cx = canvas.width/2) => {
+				// dense finale: many rockets almost concurrently
+				const promises = [];
+			 for (let i = 0; i < 16; i++) {
+					const x = Math.random() * canvas.width;
+					const targetY = Math.random() * (canvas.height * 0.5) + 40;
+					promises.push(launchRocketAndWait(x, targetY));
+					await new Promise(r => setTimeout(r, 60)); // slight staggering
+				}
+				await Promise.all(promises);
+			}
+        };
+        
+        // play combo helper
+        async function playCombo(name) {
+        	const combo = combos[name];
+        	if (!combo) return;
+        	await combo();
+        }
+        
+        // UI handlers
+        // (btnCombo already wired below to cycle combos; no duplicate handler that references removed comboSelect)
+ 
+        // fungsi untuk memicu rangkaian kembang api saat hitungan selesai
+        async function launchFireworks() {
+        	// ubah urutan supaya tidak memanggil rainbow
+        	await playCombo('multiring');
+        	await new Promise(r => setTimeout(r, 400));
+        	await playCombo('willow');
+        	await new Promise(r => setTimeout(r, 600));
+        	await playCombo('finale');
+        	// mulai kembang api sekuensial berkelanjutan
+        	setTimeout(() => runContinuousFireworks(), 900);
+        }
+ 
+        // Countdown
+        const countdownEl = document.getElementById('countdown');
+        let count = 5;
+ 
+        setTimeout(() => {
+            countdownEl.classList.remove('hidden');
+            countdownEl.textContent = count;
+ 
+            const countdownInterval = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    countdownEl.textContent = count;
+                    countdownEl.style.animation = 'none';
+                    setTimeout(() => {
+                        countdownEl.style.animation = 'pulse 1s ease-in-out';
+                    }, 10);
+                } else {
+                    clearInterval(countdownInterval);
+                    countdownEl.classList.add('hidden');
+                    
+                    // Ledakkan kembang api
+                    launchFireworks();
+                }
+            }, 1000);
+        }, 1000);
+ 
+        function showGreeting() {
+            const greetingEl = document.getElementById('greeting');
+            const text = "SELAMAT TAHUN BARU 2026";
+            const words = text.split(' ');
+            let wordIndex = 0;
+            const wordElements = [];
+
+            // Buat posisi acak dinamis (persen) untuk setiap kata
+            function randomPos() {
+                const top = 10 + Math.random() * 75; // 10% .. 85%
+                const left = 5 + Math.random() * 90; // 5% .. 95%
+                return { top: `${top}%`, left: `${left}%` };
+            }
+
+            // tentukan font size awal (responsif)
+            const isMobile = window.innerWidth <= 768;
+            const initialFont = isMobile ? 40 : 80;
+
+            function showNextWord() {
+                if (wordIndex < words.length) {
+                    const wordSpan = document.createElement('span');
+                    wordSpan.className = 'word';
+                    wordSpan.textContent = words[wordIndex];
+
+                    // ukuran awal responsif
+                    wordSpan.style.fontSize = initialFont + 'px';
+
+                    // posisi acak
+                    const pos = randomPos();
+                    wordSpan.style.top = pos.top;
+                    wordSpan.style.left = pos.left;
+
+                    greetingEl.appendChild(wordSpan);
+                    wordElements.push(wordSpan);
+
+                    // tampilkan kata dengan animasi
+                    setTimeout(() => {
+                        wordSpan.classList.add('show');
+                    }, 50);
+
+                    // hanya satu kembang api kecil untuk setiap kata
+                    setTimeout(() => {
+                        const x = (parseFloat(pos.left) / 100) * canvas.width + (Math.random() - 0.5) * 80;
+                        const targetY = Math.random() * (canvas.height * 0.4) + 50;
+                        rockets.push(new Rocket(x, targetY));
+                    }, 180);
+
+                    wordIndex++;
+                    setTimeout(showNextWord, 700);
+                } else {
+                    // Setelah semua kata muncul, susun menjadi satu baris teks di tengah
+                    setTimeout(() => {
+                        centerWords(wordElements);
+                    }, 900);
+                }
+            }
+
+            showNextWord();
+        }
+
+        function centerWords(wordElements) {
+            const isMobile = window.innerWidth <= 768;
+            const fontSize = isMobile ? 40 : 80;
+            const gap = fontSize * 0.25; // jarak antar kata
+
+            // set ukuran font target untuk akurasi pengukuran
+            wordElements.forEach(w => {
+                w.style.fontSize = fontSize + 'px';
+                w.style.letterSpacing = isMobile ? '3px' : '5px';
+            });
+
+            // Biarkan browser render agar getBoundingClientRect akurat
+            requestAnimationFrame(() => {
+                // hitung lebar tiap kata
+                const widths = wordElements.map(w => {
+                    const r = w.getBoundingClientRect();
+                    return r.width;
+                });
+
+                let totalWidth = widths.reduce((a,b) => a + b, 0) + gap * (wordElements.length - 1);
+                let currentX = (window.innerWidth - totalWidth) / 2;
+                const centerY = window.innerHeight / 2 - (fontSize / 2);
+
+                wordElements.forEach((word, idx) => {
+                    // pindah ke mode centered (hilangkan translate(-50%,-50%) dengan set transform dan posisi px)
+                    word.classList.add('centered');
+                    word.style.transform = 'translate(0, 0)'; // posisi berdasarkan left/top sekarang
+                    word.style.left = currentX + 'px';
+                    word.style.top = centerY + 'px';
+                    word.style.opacity = '1';
+                    // pastikan white-space nowrap sehingga lebar tetap sesuai
+                    word.style.whiteSpace = 'nowrap';
+
+                    currentX += widths[idx] + gap;
+                });
+
+                // sedikit penekanan dan glow sebagai final effect
+                setTimeout(() => {
+                    wordElements.forEach(w => w.classList.add('final'));
+                    spawnConfettiBurst(window.innerWidth/2, window.innerHeight/2, 40);
+                }, 900);
+
+                // ledakkan kembang api besar secara sekuensial saat selesai tersusun
+                (async () => {
+                    await new Promise(r => setTimeout(r, 600));
+                    for (let i = 0; i < 8; i++) {
+                        const x = Math.random() * canvas.width;
+                        const targetY = Math.random() * (canvas.height * 0.5) + 50;
+                        await launchRocketAndWait(x, targetY);
+                        await new Promise(r => setTimeout(r, 120));
+                    }
+                })();
+            });
+        }
+
+        // spawn confetti at center when final words are shown
+        function spawnConfettiBurst(cx, cy, amount = 30) {
+            for (let i = 0; i < amount; i++) {
+                const p = new Confetti(cx + (Math.random() - 0.5) * 80, cy + (Math.random() - 0.5) * 20);
+                confetti.push(p);
+            }
+        }
+
+        // Klik untuk kembang api tambahan
+        canvas.addEventListener('click', (e) => {
+            const targetY = Math.random() * (canvas.height * 0.4) + 50;
+            rockets.push(new Rocket(e.clientX, targetY));
+        });
+
+        // tombol tunggal: klik untuk memicu combo berikutnya (siklis)
+        const comboNames = ['multiring', 'willow', 'finale'];
+        let comboIndex = 0;
+        const btnCombo = document.getElementById('btnCombo');
+        btnCombo.addEventListener('click', () => {
+            playCombo(comboNames[comboIndex]);
+            comboIndex = (comboIndex + 1) % comboNames.length;
+        });
+ 
+        // update animate: draw flashes, shockwaves & confetti (enhanced)
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 4, 40, 0.06)'; // slightly darker for contrast
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            stars.forEach(star => star.update());
+            
+            // draw rockets and their particles
+            rockets.forEach((rocket, index) => {
+                rocket.update();
+                if (rocket.exploded && rocket.particles.length === 0) {
+                    rockets.splice(index, 1);
+                }
+            });
+
+            // shockwaves
+            for (let i = shockwaves.length - 1; i >= 0; i--) {
+                const s = shockwaves[i];
+                s.update();
+                if (s.alpha <= 0) shockwaves.splice(i, 1);
+            }
+
+            // update confetti
+            for (let i = confetti.length - 1; i >= 0; i--) {
+                confetti[i].update();
+                if (confetti[i].alpha <= 0 || confetti[i].y > canvas.height + 50) confetti.splice(i, 1);
+            }
+
+            // draw and decay flashes (stronger flash)
+            for (let i = flashes.length - 1; i >= 0; i--) {
+                const f = flashes[i];
+                if (f.alpha > 0.02) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'lighter';
+                    // buat flash lebih hangat dan lebih lembut (tanpa putih murni)
+                    ctx.globalAlpha = Math.min(0.35, f.alpha * 0.28);
+                    const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, Math.max(canvas.width, canvas.height) * 0.6);
+                    grad.addColorStop(0, 'rgba(255,220,160,0.6)');
+                    grad.addColorStop(0.45, 'rgba(255,200,140,0.06)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                     ctx.fillStyle = grad;
+                     ctx.fillRect(0, 0, canvas.width, canvas.height);
+                     ctx.restore();
+                     f.alpha -= 0.03;
+                 } else {
+                     flashes.splice(i, 1);
+                 }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
